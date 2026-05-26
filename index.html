@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body{margin:0;background:transparent;font-family:'Orbitron',sans-serif;color:#ff0000;overflow:hidden}
+        #panel_m{display:block;padding:15px}
+        .f-c{display:flex;justify-content:center;align-items:center;gap:25px;margin-top:15px}
+        #glob_v{width:500px;height:380px;position:relative;border:1px solid #ff000022;border-radius:12px;cursor:grab}
+        .inf_v{text-align:left;font-size:13px;min-width:220px;color:#ff0000}
+        .loc-tag{position:absolute;color:#fff;font-size:9px;font-weight:700;pointer-events:none;display:flex;align-items:center;gap:5px;text-transform:uppercase;z-index:10;white-space:nowrap}
+        #lst_v{margin-top:8px;font-size:11px;max-height:180px;overflow-y:auto;border-top:1px solid #ff0000}
+        .f-m{width:16px;height:auto}
+    </style>
+</head>
+<body>
+    <div id="panel_m">
+        <h2 style="text-align:center;letter-spacing:6px;color:#ff0000;font-weight:700">VISITANTES</h2>
+        <div class="f-c">
+            <div id="glob_v"></div>
+            <div class="inf_v">
+                <div id="_0x_t" style="font-size:22px">--:--:--</div>
+                <div id="_0x_d" style="margin-bottom:10px;opacity:0.8">---</div>
+                <div style="font-size:11px">SISTEMA: <span style="color:#00ff00">ONLINE</span></div>
+                <h4 style="margin:12px 0 5px 0;border-bottom:1px solid #ff0000">HISTORIAL:</h4>
+                <div id="lst_v"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuración de Firebase
+        var _0x_cfg = {apiKey: "AIzaSyBceShg6R5GJsev9d12sS3WD1VmFyVf8IQ", authDomain: "globo-vistantes.firebaseapp.com", projectId: "globo-vistantes", storageBucket: "globo-vistantes.firebasestorage.app", messagingSenderId: "699028130724", appId: "1:699028130724:web:ba267bf0856438fd26cf31"};
+        
+        if (!firebase.apps.length) {
+            firebase.initializeApp(_0x_cfg);
+        }
+        var db = firebase.firestore();
+
+        // Función principal
+        async function _0x_start() {
+            try {
+                const r = await fetch('https://ipapi.co/json/');
+                const d = await r.json();
+                if(d.city) {
+                    db.collection('vistas_privadas').add({
+                        city: d.city, 
+                        country: d.country_name, 
+                        code: d.country_code.toLowerCase(), 
+                        lat: d.latitude, 
+                        lng: d.longitude, 
+                        t: Date.now()
+                    });
+                }
+            } catch(e) { console.error("Error al registrar visita:", e); }
+
+            // Configuración del globo (Three.js)
+            const s = new THREE.Scene();
+            const c = new THREE.PerspectiveCamera(45, 500/380, 0.1, 1000);
+            const rn = new THREE.WebGLRenderer({antialias:true, alpha:true});
+            rn.setSize(500, 380);
+            document.getElementById('glob_v').appendChild(rn.domElement);
+            
+            const g = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), new THREE.MeshPhongMaterial({
+                map: new THREE.TextureLoader().load("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"),
+                emissive: new THREE.Color("#ff0000"),
+                emissiveIntensity: 0.08,
+                transparent: true
+            }));
+            s.add(g);
+            s.add(new THREE.AmbientLight(0xffffff, 1.4));
+            c.position.z = 3.1;
+            
+            let mks=[], dr=false, px=0;
+            const cn = document.getElementById('glob_v');
+            
+            // Eventos de ratón
+            cn.onmousedown = e => {dr=true; px=e.clientX};
+            window.onmouseup = () => {dr=false};
+            window.onmousemove = e => {if(dr){g.rotation.y += (e.clientX-px)*0.007; px=e.clientX}};
+            
+            // Lectura de Firebase
+            db.collection('vistas_privadas').orderBy('t', 'desc').limit(7).onSnapshot(sn => {
+                let h = "";
+                mks.forEach(m => {g.remove(m.d); if(m.t) m.t.remove()});
+                mks=[];
+                sn.forEach(doc => {
+                    const u = doc.data();
+                    h += '<div><img src="https://flagcdn.com/w20/'+u.code+'.png" class="f-m"> '+u.city+', '+u.country+'</div>';
+                    if(u.lat) {
+                        const p = (90-u.lat)*(Math.PI/180), t = (u.lng+180)*(Math.PI/180);
+                        const ps = new THREE.Vector3(-1.03*Math.sin(p)*Math.cos(t), 1.03*Math.cos(p), 1.03*Math.sin(p)*Math.sin(t));
+                        const d = new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 16), new THREE.MeshBasicMaterial({color:0x00ff00}));
+                        d.position.copy(ps);
+                        g.add(d);
+                        const tg = document.createElement('div');
+                        tg.className = 'loc-tag';
+                        tg.innerHTML = u.city+', '+u.country+' <img src="https://flagcdn.com/w20/'+u.code+'.png" class="f-m">';
+                        cn.appendChild(tg);
+                        mks.push({d, t:tg, ps});
+                    }
+                });
+                document.getElementById('lst_v').innerHTML = h;
+            });
+
+            // Animación
+            function an() {
+                requestAnimationFrame(an);
+                if(!dr) g.rotation.y += 0.003;
+                mks.forEach(m => {
+                    const v = m.ps.clone().applyQuaternion(g.quaternion).project(c);
+                    if(v.z < 1) {
+                        m.t.style.display = 'flex';
+                        m.t.style.left = (v.x*0.5+0.5)*500+'px';
+                        m.t.style.top = (v.y*-0.5+0.5)*380+'px';
+                    } else { m.t.style.display = 'none'; }
+                });
+                rn.render(s, c);
+            }
+            an();
+
+            // Reloj
+            setInterval(() => {
+                const n = new Date();
+                document.getElementById("_0x_t").textContent = n.toLocaleTimeString();
+                document.getElementById("_0x_d").textContent = n.toLocaleDateString("es-ES", {weekday:"long", day:"numeric", month:"long"});
+            }, 1000);
+        }
+
+        // Ejecutar
+        _0x_start();
+    </script>
+</body>
+</html>
