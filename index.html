@@ -15,6 +15,7 @@
         .loc-tag{position:absolute;color:#fff;font-size:9px;font-weight:700;pointer-events:none;display:flex;align-items:center;gap:5px;text-transform:uppercase;z-index:10;white-space:nowrap}
         #lst_v{margin-top:8px;font-size:11px;max-height:180px;overflow-y:auto;border-top:1px solid #ff0000}
         .f-m{width:16px;height:auto}
+        .contador-activos{font-size:14px;color:#00ff00;margin-top:5px;font-weight:bold;}
     </style>
 </head>
 <body>
@@ -26,7 +27,9 @@
                 <div id="_0x_t" style="font-size:22px">--:--:--</div>
                 <div id="_0x_d" style="margin-bottom:10px;opacity:0.8">---</div>
                 <div style="font-size:11px">SISTEMA: <span style="color:#00ff00">ONLINE</span></div>
-                <h4 style="margin:12px 0 5px 0;border-bottom:1px solid #ff0000">HISTORIAL:</h4>
+                <div class="contador-activos">EN SALA: <span id="num_activos">0</span></div>
+                
+                <h4 style="margin:12px 0 5px 0;border-bottom:1px solid #ff0000">HISTORIAL EN VIVO:</h4>
                 <div id="lst_v"></div>
             </div>
         </div>
@@ -41,24 +44,54 @@
         }
         var db = firebase.firestore();
 
-        // Función principal
-        async function _0x_start() {
-            try {
-                const r = await fetch('https://ipapi.co/json/');
-                const d = await r.json();
-                if(d.city) {
-                    db.collection('vistas_privadas').add({
-                        city: d.city, 
-                        country: d.country_name, 
-                        code: d.country_code.toLowerCase(), 
-                        lat: d.latitude, 
-                        lng: d.longitude, 
-                        t: Date.now()
-                    });
-                }
-            } catch(e) { console.error("Error al registrar visita:", e); }
+        // Creamos una sesión única por usuario para que no se dupliquen al recargar
+        var miSesionId = "user_" + Math.random().toString(36).substring(2, 15) + Date.now();
 
-            // Configuración del globo (Three.js)
+        // Función principal con API HTTPS sin bloqueos de navegador
+        async function _0x_start() {
+            let datosUsuario = {
+                city: "Invitado",
+                country: "Desconocido",
+                code: "un", 
+                lat: null,
+                lng: null,
+                t: Date.now()
+            };
+
+            try {
+                // API moderna con soporte SSL total (HTTPS)
+                const r = await fetch('https://freeipapi.com/api/json');
+                const d = await r.json();
+                
+                if(d) {
+                    datosUsuario = {
+                        city: d.cityName || "Invitado",
+                        country: d.countryName || "Desconocido",
+                        code: d.countryCode ? d.countryCode.toLowerCase() : "un",
+                        lat: d.latitude || null,
+                        lng: d.longitude || null,
+                        t: Date.now()
+                    };
+                }
+            } catch(e) { 
+                console.warn("La API de localización falló o fue bloqueada. Entrando de forma anónima."); 
+            }
+
+            // Guardamos el registro en Firebase
+            try {
+                await db.collection('vistas_privadas').doc(miSesionId).set(datosUsuario);
+            } catch(firebaseError) {
+                console.error("Error al escribir en Firestore. Revisa las Reglas:", firebaseError);
+            }
+
+            // Borrado automático al salir o cerrar el chat
+            function salirDeSala() {
+                db.collection('vistas_privadas').doc(miSesionId).delete();
+            }
+            window.addEventListener('beforeunload', salirDeSala);
+            window.addEventListener('unload', salirDeSala);
+
+            // Configuración de la esfera del mundo (Three.js)
             const s = new THREE.Scene();
             const c = new THREE.PerspectiveCamera(45, 500/380, 0.1, 1000);
             const rn = new THREE.WebGLRenderer({antialias:true, alpha:true});
@@ -78,25 +111,33 @@
             let mks=[], dr=false, px=0;
             const cn = document.getElementById('glob_v');
             
-            // Eventos de ratón
+            // Controles de arrastre de globo con ratón
             cn.onmousedown = e => {dr=true; px=e.clientX};
             window.onmouseup = () => {dr=false};
             window.onmousemove = e => {if(dr){g.rotation.y += (e.clientX-px)*0.007; px=e.clientX}};
             
-            // Lectura de Firebase
-            db.collection('vistas_privadas').orderBy('t', 'desc').limit(7).onSnapshot(sn => {
+            // Escucha en Tiempo Real total de Firebase Firestore
+            db.collection('vistas_privadas').orderBy('t', 'desc').onSnapshot(sn => {
                 let h = "";
-                mks.forEach(m => {g.remove(m.d); if(m.t) m.t.remove()});
-                mks=[];
+                
+                // Limpieza absoluta de rastros/fantasmas anteriores
+                mks.forEach(m => { g.remove(m.d); if(m.t) m.t.remove(); });
+                mks = [];
+                
+                // Actualización del número real de conexiones abiertas
+                document.getElementById('num_activos').textContent = sn.size;
+
                 sn.forEach(doc => {
                     const u = doc.data();
                     h += '<div><img src="https://flagcdn.com/w20/'+u.code+'.png" class="f-m"> '+u.city+', '+u.country+'</div>';
-                    if(u.lat) {
+                    
+                    if(u.lat && u.lng) {
                         const p = (90-u.lat)*(Math.PI/180), t = (u.lng+180)*(Math.PI/180);
                         const ps = new THREE.Vector3(-1.03*Math.sin(p)*Math.cos(t), 1.03*Math.cos(p), 1.03*Math.sin(p)*Math.sin(t));
                         const d = new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 16), new THREE.MeshBasicMaterial({color:0x00ff00}));
                         d.position.copy(ps);
                         g.add(d);
+                        
                         const tg = document.createElement('div');
                         tg.className = 'loc-tag';
                         tg.innerHTML = u.city+', '+u.country+' <img src="https://flagcdn.com/w20/'+u.code+'.png" class="f-m">';
@@ -107,7 +148,7 @@
                 document.getElementById('lst_v').innerHTML = h;
             });
 
-            // Animación
+            // Motor de animación del globo
             function an() {
                 requestAnimationFrame(an);
                 if(!dr) g.rotation.y += 0.003;
@@ -123,7 +164,7 @@
             }
             an();
 
-            // Reloj
+            // Sistema de Reloj local
             setInterval(() => {
                 const n = new Date();
                 document.getElementById("_0x_t").textContent = n.toLocaleTimeString();
@@ -131,7 +172,6 @@
             }, 1000);
         }
 
-        // Ejecutar
         _0x_start();
     </script>
 </body>
