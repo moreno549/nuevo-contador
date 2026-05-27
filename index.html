@@ -35,7 +35,6 @@
     </div>
 
     <script>
-        // COLOCA AQUÍ LAS CREDENCIALES DE TU PROYECTO NUEVO
         var _0x_cfg = {
             apiKey: "AIzaSyBceShg6R5GJsev9d12sS3WD1VmFyVf8IQ", 
             authDomain: "globo-vistantes.firebaseapp.com", 
@@ -52,42 +51,38 @@
         var miSesionId = "user_" + Math.random().toString(36).substring(2, 15) + Date.now();
 
         async function _0x_start() {
-            // Valores por defecto por si acaso
+            let userLang = (navigator.language || navigator.userLanguage).split('-')[0].toLowerCase();
+            let paisRescate = "España"; let codRescate = "es"; let ltR = 40.4167; let lgR = -3.7037;
+            
+            if(userLang === "mx") { paisRescate = "México"; codRescate = "mx"; ltR = 19.4326; lgR = -99.1332; }
+            else if(userLang === "ar") { paisRescate = "Argentina"; codRescate = "ar"; ltR = -34.6037; lgR = -58.3816; }
+            else if(userLang === "co") { paisRescate = "Colombia"; codRescate = "co"; ltR = 4.7110; lgR = -74.0721; }
+            else if(userLang === "cl") { paisRescate = "Chile"; codRescate = "cl"; ltR = -33.4489; lgR = -70.6693; }
+
             let datosUsuario = {
-                city: "Invitado", 
-                country: "España", 
-                code: "es", 
-                lat: 40.4167, 
-                lng: -3.7037, 
-                t: Date.now()
+                city: "Usuario", country: paisRescate, code: codRescate, lat: ltR, lng: lgR, t: Date.now()
             };
 
-            // Consultamos a ipwho.is que es súper rápida y libre de bloqueos CORS
             try {
                 const r = await fetch('https://ipwho.is/');
                 if (r.ok) {
                     const d = await r.json();
                     if(d && d.success) {
                         datosUsuario = {
-                            city: d.city || "Invitado",
-                            country: d.country || "España",
-                            code: d.country_code ? d.country_code.toLowerCase() : "es",
-                            lat: d.latitude || 40.4167,
-                            lng: d.longitude || -3.7037,
+                            city: d.city || "Usuario",
+                            country: d.country || paisRescate,
+                            code: d.country_code ? d.country_code.toLowerCase() : codRescate,
+                            lat: d.latitude || ltR,
+                            lng: d.longitude || lgR,
                             t: Date.now()
                         };
                     }
                 }
-            } catch(e) { 
-                console.warn("Fallo en la API de geolocalización externa."); 
-            }
+            } catch(e) { console.warn("API básica activa."); }
 
-            // Enviamos el registro real a tu Firestore abierto
             try {
                 await _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).set(datosUsuario);
-            } catch(ex) { 
-                console.error("Error al escribir en Firestore:", ex); 
-            }
+            } catch(ex) { console.error("Error:", ex); }
 
             function salirDeSala() {
                 _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).delete();
@@ -117,16 +112,23 @@
             window.onmouseup = () => {dr=false};
             window.onmousemove = e => {if(dr){g.rotation.y += (e.clientX-px)*0.007; px=e.clientX}};
             
-            // Escucha en tiempo real de Firestore
+            // Escucha en tiempo real filtrando los fantasmas del pasado automáticamente
             _0x_baseDatos.collection('vistas_privadas').orderBy('t', 'desc').onSnapshot(sn => {
                 let h = "";
                 mks.forEach(m => { g.remove(m.d); if(m.t) m.t.remove(); });
                 mks = [];
                 
-                document.getElementById('num_activos').textContent = sn.size;
+                let usuariosFiltradosActivos = 0;
 
                 sn.forEach(doc => {
                     const u = doc.data();
+                    
+                    // FILTRO INTELIGENTE AUTOMÁTICO: Si contiene textos de prueba o fantasmas viejos, el código los ignora y pasa al siguiente
+                    if (u.city === "Probando Conexión" || u.city === "Invitado" || u.city === "Bloqueo" || u.city === "Desconocido") {
+                        return; 
+                    }
+
+                    usuariosFiltradosActivos++;
                     h += '<div><img src="https://flagcdn.com/w20/'+u.code+'.png" class="f-m"> '+u.city+', '+u.country+'</div>';
                     
                     if(u.lat && u.lng) {
@@ -143,6 +145,8 @@
                         mks.push({d, t:tg, ps});
                     }
                 });
+                
+                document.getElementById('num_activos').textContent = usuariosFiltradosActivos;
                 document.getElementById('lst_v').innerHTML = h;
             });
 
