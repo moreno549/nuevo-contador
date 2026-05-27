@@ -28,7 +28,6 @@
                 <div id="_0x_d" style="margin-bottom:10px;opacity:0.8">---</div>
                 <div style="font-size:11px">SISTEMA: <span style="color:#00ff00">ONLINE</span></div>
                 <div class="contador-activos">EN SALA: <span id="num_activos">0</span></div>
-                
                 <h4 style="margin:12px 0 5px 0;border-bottom:1px solid #ff0000">HISTORIAL EN VIVO:</h4>
                 <div id="lst_v"></div>
             </div>
@@ -36,62 +35,57 @@
     </div>
 
     <script>
-        // Configuración de Firebase
         var _0x_cfg = {apiKey: "AIzaSyBceShg6R5GJsev9d12sS3WD1VmFyVf8IQ", authDomain: "globo-vistantes.firebaseapp.com", projectId: "globo-vistantes", storageBucket: "globo-vistantes.firebasestorage.app", messagingSenderId: "699028130724", appId: "1:699028130724:web:ba267bf0856438fd26cf31"};
         
         if (!firebase.apps.length) {
             firebase.initializeApp(_0x_cfg);
         }
-        var db = firebase.firestore();
-
-        // Creamos una sesión única por usuario para que no se dupliquen al recargar
+        // Variable ultra-privada para evitar que el chat la rompa
+        var _0x_baseDatos = firebase.firestore();
         var miSesionId = "user_" + Math.random().toString(36).substring(2, 15) + Date.now();
 
-        // Función principal con API HTTPS sin bloqueos de navegador
         async function _0x_start() {
+            let userLang = (navigator.language || navigator.userLanguage).split('-')[0].toLowerCase();
+            let paisPorDefecto = "España";
+            let codigoPorDefecto = "es";
+            
+            if(userLang === "mx") { paisPorDefecto = "México"; codigoPorDefecto = "mx"; }
+            else if(userLang === "ar") { paisPorDefecto = "Argentina"; codigoPorDefecto = "ar"; }
+            else if(userLang === "co") { paisPorDefecto = "Colombia"; codigoPorDefecto = "co"; }
+
             let datosUsuario = {
-                city: "Invitado",
-                country: "Desconocido",
-                code: "un", 
-                lat: null,
-                lng: null,
-                t: Date.now()
+                city: "Usuario", country: paisPorDefecto, code: codigoPorDefecto, 
+                lat: 40.4167, lng: -3.7037, t: Date.now()
             };
 
             try {
-                // API moderna con soporte SSL total (HTTPS)
-                const r = await fetch('https://freeipapi.com/api/json');
-                const d = await r.json();
-                
-                if(d) {
-                    datosUsuario = {
-                        city: d.cityName || "Invitado",
-                        country: d.countryName || "Desconocido",
-                        code: d.countryCode ? d.countryCode.toLowerCase() : "un",
-                        lat: d.latitude || null,
-                        lng: d.longitude || null,
-                        t: Date.now()
-                    };
+                const r = await fetch('https://ipapi.co/json/');
+                if (r.ok) {
+                    const d = await r.json();
+                    if(d && !d.error) {
+                        datosUsuario = {
+                            city: d.city || "Usuario",
+                            country: d.country_name || paisPorDefecto,
+                            code: d.country ? d.country.toLowerCase() : codigoPorDefecto,
+                            lat: d.latitude || 40.4167,
+                            lng: d.longitude || -3.7037,
+                            t: Date.now()
+                        };
+                    }
                 }
-            } catch(e) { 
-                console.warn("La API de localización falló o fue bloqueada. Entrando de forma anónima."); 
-            }
+            } catch(e) { console.warn("Bloqueo de IP activo."); }
 
-            // Guardamos el registro en Firebase
             try {
-                await db.collection('vistas_privadas').doc(miSesionId).set(datosUsuario);
-            } catch(firebaseError) {
-                console.error("Error al escribir en Firestore. Revisa las Reglas:", firebaseError);
-            }
+                await _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).set(datosUsuario);
+            } catch(ex) { console.error("Error Firestore:", ex); }
 
-            // Borrado automático al salir o cerrar el chat
             function salirDeSala() {
-                db.collection('vistas_privadas').doc(miSesionId).delete();
+                _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).delete();
             }
             window.addEventListener('beforeunload', salirDeSala);
             window.addEventListener('unload', salirDeSala);
 
-            // Configuración de la esfera del mundo (Three.js)
+            // Globo Three.js
             const s = new THREE.Scene();
             const c = new THREE.PerspectiveCamera(45, 500/380, 0.1, 1000);
             const rn = new THREE.WebGLRenderer({antialias:true, alpha:true});
@@ -100,9 +94,7 @@
             
             const g = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), new THREE.MeshPhongMaterial({
                 map: new THREE.TextureLoader().load("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"),
-                emissive: new THREE.Color("#ff0000"),
-                emissiveIntensity: 0.08,
-                transparent: true
+                emissive: new THREE.Color("#ff0000"), emissiveIntensity: 0.08, transparent: true
             }));
             s.add(g);
             s.add(new THREE.AmbientLight(0xffffff, 1.4));
@@ -111,20 +103,16 @@
             let mks=[], dr=false, px=0;
             const cn = document.getElementById('glob_v');
             
-            // Controles de arrastre de globo con ratón
             cn.onmousedown = e => {dr=true; px=e.clientX};
             window.onmouseup = () => {dr=false};
             window.onmousemove = e => {if(dr){g.rotation.y += (e.clientX-px)*0.007; px=e.clientX}};
             
-            // Escucha en Tiempo Real total de Firebase Firestore
-            db.collection('vistas_privadas').orderBy('t', 'desc').onSnapshot(sn => {
+            // Escucha aislada
+            _0x_baseDatos.collection('vistas_privadas').orderBy('t', 'desc').onSnapshot(sn => {
                 let h = "";
-                
-                // Limpieza absoluta de rastros/fantasmas anteriores
                 mks.forEach(m => { g.remove(m.d); if(m.t) m.t.remove(); });
                 mks = [];
                 
-                // Actualización del número real de conexiones abiertas
                 document.getElementById('num_activos').textContent = sn.size;
 
                 sn.forEach(doc => {
@@ -148,7 +136,6 @@
                 document.getElementById('lst_v').innerHTML = h;
             });
 
-            // Motor de animación del globo
             function an() {
                 requestAnimationFrame(an);
                 if(!dr) g.rotation.y += 0.003;
@@ -164,7 +151,6 @@
             }
             an();
 
-            // Sistema de Reloj local
             setInterval(() => {
                 const n = new Date();
                 document.getElementById("_0x_t").textContent = n.toLocaleTimeString();
