@@ -2,9 +2,10 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <title>Visitas en Vivo</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
     <style>
         body{margin:0;background:transparent;font-family:'Orbitron',sans-serif;color:#ff0000;overflow:hidden}
@@ -15,7 +16,6 @@
         .loc-tag{position:absolute;color:#fff;font-size:9px;font-weight:700;pointer-events:none;display:flex;align-items:center;gap:5px;text-transform:uppercase;z-index:10;white-space:nowrap}
         #lst_v{margin-top:8px;font-size:11px;max-height:180px;overflow-y:auto;border-top:1px solid #ff0000}
         .f-m{width:16px;height:auto}
-        .contador-activos{font-size:14px;color:#00ff00;margin-top:5px;font-weight:bold;}
     </style>
 </head>
 <body>
@@ -27,8 +27,7 @@
                 <div id="_0x_t" style="font-size:22px">--:--:--</div>
                 <div id="_0x_d" style="margin-bottom:10px;opacity:0.8">---</div>
                 <div style="font-size:11px">SISTEMA: <span style="color:#00ff00">ONLINE</span></div>
-                <div class="contador-activos">EN SALA: <span id="num_activos">0</span></div>
-                <h4 style="margin:12px 0 5px 0;border-bottom:1px solid #ff0000">HISTORIAL EN VIVO:</h4>
+                <h4 style="margin:12px 0 5px 0;border-bottom:1px solid #ff0000">HISTORIAL:</h4>
                 <div id="lst_v"></div>
             </div>
         </div>
@@ -48,49 +47,68 @@
             firebase.initializeApp(_0x_cfg);
         }
         var _0x_baseDatos = firebase.firestore();
-        var miSesionId = "user_" + Math.random().toString(36).substring(2, 15) + Date.now();
+        
+        var miSesionId = localStorage.getItem('radio_malajes_sesion');
+        if (!miSesionId) {
+            miSesionId = "sala_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
+            localStorage.setItem('radio_malajes_sesion', miSesionId);
+        }
 
         async function _0x_start() {
-            let userLang = (navigator.language || navigator.userLanguage).split('-')[0].toLowerCase();
-            let paisRescate = "España"; let codRescate = "es"; let ltR = 40.4167; let lgR = -3.7037;
-            
-            if(userLang === "mx") { paisRescate = "México"; codRescate = "mx"; ltR = 19.4326; lgR = -99.1332; }
-            else if(userLang === "ar") { paisRescate = "Argentina"; codRescate = "ar"; ltR = -34.6037; lgR = -58.3816; }
-            else if(userLang === "co") { paisRescate = "Colombia"; codRescate = "co"; ltR = 4.7110; lgR = -74.0721; }
-            else if(userLang === "cl") { paisRescate = "Chile"; codRescate = "cl"; ltR = -33.4489; lgR = -70.6693; }
-
-            let datosUsuario = {
-                city: "Usuario", country: paisRescate, code: codRescate, lat: ltR, lng: lgR, t: Date.now()
-            };
+            let datosUsuario = null;
 
             try {
-                const r = await fetch('https://ipwho.is/');
+                const r = await fetch('https://ipapi.co/json/');
                 if (r.ok) {
                     const d = await r.json();
-                    if(d && d.success) {
+                    if(d && !d.error) {
                         datosUsuario = {
-                            city: d.city || "Usuario",
-                            country: d.country || paisRescate,
-                            code: d.country_code ? d.country_code.toLowerCase() : codRescate,
-                            lat: d.latitude || ltR,
-                            lng: d.longitude || lgR,
+                            city: d.city || d.region || "Online", 
+                            country: d.country_name || "Spain",
+                            code: d.country_code ? d.country_code.toLowerCase() : "es",
+                            lat: d.latitude || 40.4167,
+                            lng: d.longitude || -3.7037,
                             t: Date.now()
                         };
                     }
                 }
-            } catch(e) { console.warn("API básica activa."); }
+            } catch(e) {
+                try {
+                    const r2 = await fetch('https://ipwho.is/');
+                    const d2 = await r2.json();
+                    if(d2 && d2.success) {
+                        datosUsuario = {
+                            city: d2.city || d2.region || "Online",
+                            country: d2.country || "Spain",
+                            code: d2.country_code ? d2.country_code.toLowerCase() : "es",
+                            lat: d2.latitude || 40.4167,
+                            lng: d2.longitude || -3.7037,
+                            t: Date.now()
+                        };
+                    }
+                } catch(err) { console.warn("Error"); }
+            }
 
-            try {
-                await _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).set(datosUsuario);
-            } catch(ex) { console.error("Error:", ex); }
+            if (datosUsuario) {
+                _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).set(datosUsuario).catch(()=>{});
+            }
+
+            setInterval(() => {
+                if (datosUsuario) {
+                    _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).set({
+                        ...datosUsuario,
+                        t: Date.now()
+                    }).catch(()=>{});
+                }
+            }, 15000);
 
             function salirDeSala() {
-                _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).delete();
+                _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).delete().catch(()=>{});
             }
             window.addEventListener('beforeunload', salirDeSala);
             window.addEventListener('unload', salirDeSala);
 
-            // Globo Three.js
+            // Globo 3D
             const s = new THREE.Scene();
             const c = new THREE.PerspectiveCamera(45, 500/380, 0.1, 1000);
             const rn = new THREE.WebGLRenderer({antialias:true, alpha:true});
@@ -112,27 +130,39 @@
             window.onmouseup = () => {dr=false};
             window.onmousemove = e => {if(dr){g.rotation.y += (e.clientX-px)*0.007; px=e.clientX}};
             
-            // Escucha en tiempo real filtrando los fantasmas del pasado automáticamente
+            // Escucha automática real
             _0x_baseDatos.collection('vistas_privadas').orderBy('t', 'desc').onSnapshot(sn => {
                 let h = "";
-                mks.forEach(m => { g.remove(m.d); if(m.t) m.t.remove(); });
+                document.querySelectorAll('.loc-tag').forEach(el => el.remove());
+                mks.forEach(m => g.remove(m.d));
                 mks = [];
                 
-                let usuariosFiltradosActivos = 0;
+                let ciudadesAgregadas = new Set();
+                const tiempoLimite = Date.now() - 60000; // Limpieza automática a los 60 segundos
 
                 sn.forEach(doc => {
                     const u = doc.data();
                     
-                    // FILTRO INTELIGENTE AUTOMÁTICO: Si contiene textos de prueba o fantasmas viejos, el código los ignora y pasa al siguiente
-                    if (u.city === "Probando Conexión" || u.city === "Invitado" || u.city === "Bloqueo" || u.city === "Desconocido") {
-                        return; 
+                    if (u.t < tiempoLimite) {
+                        _0x_baseDatos.collection('vistas_privadas').doc(doc.id).delete().catch(()=>{});
+                        return;
                     }
-
-                    usuariosFiltradosActivos++;
-                    h += '<div><img src="https://flagcdn.com/w20/'+u.code+'.png" class="f-m"> '+u.city+', '+u.country+'</div>';
                     
-                    if(u.lat && u.lng) {
-                        const p = (90-u.lat)*(Math.PI/180), t = (u.lng+180)*(Math.PI/180);
+                    let ciudadFinal = u.city || "Online";
+                    let paisFinal = u.country || "Spain";
+                    let latFinal = u.lat || 40.4167;
+                    let lngFinal = u.lng || -3.7037;
+                    let codigoFinal = u.code || "es";
+                    
+                    let textoMostrar = (ciudadFinal && ciudadFinal !== paisFinal) ? ciudadFinal + ', ' + paisFinal : paisFinal;
+                    
+                    if (!ciudadesAgregadas.has(textoMostrar)) {
+                        h += '<div><img src="https://flagcdn.com/w20/'+codigoFinal+'.png" class="f-m"> ' + textoMostrar + '</div>';
+                        ciudadesAgregadas.add(textoMostrar);
+                    }
+                    
+                    if(latFinal && lngFinal) {
+                        const p = (90-latFinal)*(Math.PI/180), t = (lngFinal+180)*(Math.PI/180);
                         const ps = new THREE.Vector3(-1.03*Math.sin(p)*Math.cos(t), 1.03*Math.cos(p), 1.03*Math.sin(p)*Math.sin(t));
                         const d = new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 16), new THREE.MeshBasicMaterial({color:0x00ff00}));
                         d.position.copy(ps);
@@ -140,13 +170,12 @@
                         
                         const tg = document.createElement('div');
                         tg.className = 'loc-tag';
-                        tg.innerHTML = u.city+', '+u.country+' <img src="https://flagcdn.com/w20/'+u.code+'.png" class="f-m">';
+                        tg.innerHTML = textoMostrar + ' <img src="https://flagcdn.com/w20/'+codigoFinal+'.png" class="f-m">';
                         cn.appendChild(tg);
                         mks.push({d, t:tg, ps});
                     }
                 });
                 
-                document.getElementById('num_activos').textContent = usuariosFiltradosActivos;
                 document.getElementById('lst_v').innerHTML = h;
             });
 
