@@ -35,7 +35,15 @@
     </div>
 
     <script>
-        var _0x_cfg = {apiKey: "AIzaSyBceShg6R5GJsev9d12sS3WD1VmFyVf8IQ", authDomain: "globo-vistantes.firebaseapp.com", projectId: "globo-vistantes", storageBucket: "globo-vistantes.firebasestorage.app", messagingSenderId: "699028130724", appId: "1:699028130724:web:ba267bf0856438fd26cf31"};
+        // COLOCA AQUÍ LAS CREDENCIALES DE TU PROYECTO NUEVO
+        var _0x_cfg = {
+            apiKey: "AIzaSyBceShg6R5GJsev9d12sS3WD1VmFyVf8IQ", 
+            authDomain: "globo-vistantes.firebaseapp.com", 
+            projectId: "globo-vistantes", 
+            storageBucket: "globo-vistantes.firebasestorage.app", 
+            messagingSenderId: "699028130724", 
+            appId: "1:699028130724:web:ba267bf0856438fd26cf31"
+        };
         
         if (!firebase.apps.length) {
             firebase.initializeApp(_0x_cfg);
@@ -44,53 +52,50 @@
         var miSesionId = "user_" + Math.random().toString(36).substring(2, 15) + Date.now();
 
         async function _0x_start() {
-            let userLang = (navigator.language || navigator.userLanguage).split('-')[0].toLowerCase();
-            let paisPorDefecto = "España";
-            let codigoPorDefecto = "es";
-            let coordLat = 40.4167;
-            let coordLng = -3.7037;
-            
-            // Localizaciones por defecto según el navegador por si la IP falla
-            if(userLang === "mx") { paisPorDefecto = "México"; codigoPorDefecto = "mx"; coordLat = 19.4326; coordLng = -99.1332; }
-            else if(userLang === "ar") { paisPorDefecto = "Argentina"; codigoPorDefecto = "ar"; coordLat = -34.6037; coordLng = -58.3816; }
-            else if(userLang === "co") { paisPorDefecto = "Colombia"; codigoPorDefecto = "co"; coordLat = 4.7110; coordLng = -74.0721; }
-            else if(userLang === "cl") { paisPorDefecto = "Chile"; codigoPorDefecto = "cl"; coordLat = -33.4489; coordLng = -70.6693; }
-
+            // Valores por defecto por si acaso
             let datosUsuario = {
-                city: "Usuario", country: paisPorDefecto, code: codigoPorDefecto, 
-                lat: coordLat, lng: coordLng, t: Date.now()
+                city: "Invitado", 
+                country: "España", 
+                code: "es", 
+                lat: 40.4167, 
+                lng: -3.7037, 
+                t: Date.now()
             };
 
+            // Consultamos a ipwho.is que es súper rápida y libre de bloqueos CORS
             try {
-                // Cambiado a freeipapi para evitar bloqueos 403 de servidores
-                const r = await fetch('https://freeipapi.com/api/json');
+                const r = await fetch('https://ipwho.is/');
                 if (r.ok) {
                     const d = await r.json();
-                    if(d) {
+                    if(d && d.success) {
                         datosUsuario = {
-                            city: d.cityName || "Usuario",
-                            country: d.countryName || paisPorDefecto,
-                            code: d.countryCode ? d.countryCode.toLowerCase() : codigoPorDefecto,
-                            lat: d.latitude || coordLat,
-                            lng: d.longitude || coordLng,
+                            city: d.city || "Invitado",
+                            country: d.country || "España",
+                            code: d.country_code ? d.country_code.toLowerCase() : "es",
+                            lat: d.latitude || 40.4167,
+                            lng: d.longitude || -3.7037,
                             t: Date.now()
                         };
                     }
                 }
-            } catch(e) { console.warn("API de IP bloqueada. Usando configuración regional del navegador."); }
+            } catch(e) { 
+                console.warn("Fallo en la API de geolocalización externa."); 
+            }
 
+            // Enviamos el registro real a tu Firestore abierto
             try {
                 await _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).set(datosUsuario);
-            } catch(ex) { console.error("Error Firestore al escribir:", ex); }
+            } catch(ex) { 
+                console.error("Error al escribir en Firestore:", ex); 
+            }
 
-            // Función de borrado automático e inmediato al salir
             function salirDeSala() {
                 _0x_baseDatos.collection('vistas_privadas').doc(miSesionId).delete();
             }
             window.addEventListener('beforeunload', salirDeSala);
             window.addEventListener('unload', salirDeSala);
 
-            // Configuración Globo Three.js
+            // Globo Three.js
             const s = new THREE.Scene();
             const c = new THREE.PerspectiveCamera(45, 500/380, 0.1, 1000);
             const rn = new THREE.WebGLRenderer({antialias:true, alpha:true});
@@ -112,7 +117,7 @@
             window.onmouseup = () => {dr=false};
             window.onmousemove = e => {if(dr){g.rotation.y += (e.clientX-px)*0.007; px=e.clientX}};
             
-            // Escucha Firestore en tiempo real con limpieza activa
+            // Escucha en tiempo real de Firestore
             _0x_baseDatos.collection('vistas_privadas').orderBy('t', 'desc').onSnapshot(sn => {
                 let h = "";
                 mks.forEach(m => { g.remove(m.d); if(m.t) m.t.remove(); });
